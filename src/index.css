@@ -1,0 +1,15 @@
+/* /src/index.css */
+@import "tailwindcss";
+
+/* global */
+:root { --font-sans: "Poppins", ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+html { scroll-behavior: smooth; }
+body { @apply bg-black text-white antialiased; }
+.section-offset { scroll-margin-top: 84px; }
+
+/* helpers */
+.container-x { @apply max-w-6xl mx-auto px-6; }
+.btn-primary { @apply inline-flex items-center justify-center rounded-xl px-5 py-3 font-semibold bg-yellow-400 text-black hover:brightness-95 transition; }
+.btn-ghost { @apply inline-flex items-center justify-center rounded-xl px-5 py-3 font-semibold border border-yellow-400 text-yellow-400 hover:bg-yellow-400 hover:text-black transition; }
+.card { @apply rounded-2xl border border-zinc-800/80 bg-zinc-900/60 backdrop-blur; }
+.card-ring { @apply ring-1 ring-white/10; }
