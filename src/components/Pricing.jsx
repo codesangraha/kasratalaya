@@ -1,3 +1,4 @@
+// src/components/Pricing.jsx
 import React, { useState } from "react";
 
 export default function Pricing() {
@@ -87,11 +88,10 @@ export default function Pricing() {
 
 /**
  * Card component
- * Works with the new Contact.jsx — when user clicks Book Program,
- * passes name, duration, and price to contact page.
+ * Works with Contact.jsx — when user clicks Book Program,
+ * passes name, duration, and price to contact page and triggers update (no refresh).
  */
 function PricingCard({ title, subtitle, priceNow, priceOld, items, featured }) {
-  // handle Book Program click
   const handleBook = () => {
     const programData = {
       name: title,
@@ -99,17 +99,29 @@ function PricingCard({ title, subtitle, priceNow, priceOld, items, featured }) {
       price: priceNow,
     };
 
-    // 1) update URL without reload
+    // build new URL with hash
     const hash = `#contact?${new URLSearchParams(programData).toString()}`;
+    const url = `${window.location.pathname}${window.location.search}${hash}`;
+
+    // update URL without reload
     try {
-      history.pushState(null, "", hash);
-    } catch (e) {
-      // fallback
-      window.location.hash = hash;
+      window.history.pushState(null, "", url);
+    } catch {
+      window.location.hash = hash; // fallback
     }
 
-    // 2) smooth scroll to contact with navbar offset
-    // adjust this if your navbar height differs
+    // IMPORTANT: force Contact.jsx to re-parse immediately (no refresh)
+    // Some browsers won't fire 'hashchange' for pushState, so dispatch it.
+    try {
+      window.dispatchEvent(new HashChangeEvent("hashchange"));
+    } catch {
+      // older Safari fallback
+      const evt = document.createEvent("Event");
+      evt.initEvent("hashchange", true, true);
+      window.dispatchEvent(evt);
+    }
+
+    // Smooth scroll to #contact with a small offset (match your Contact.jsx NAVBAR_HEIGHT)
     const NAVBAR_OFFSET = 70;
     const el = document.getElementById("contact");
     if (el) {
@@ -117,19 +129,13 @@ function PricingCard({ title, subtitle, priceNow, priceOld, items, featured }) {
       const absoluteTop = rect.top + window.scrollY;
       const target = Math.max(absoluteTop - NAVBAR_OFFSET - 12, 0);
 
-      // small timeout so layout has time to settle on some devices
       setTimeout(() => {
         window.scrollTo({ top: target, behavior: "smooth" });
-
-        // 3) focus first input so user can start typing
         setTimeout(() => {
           const input = el.querySelector("input[name='name'], input, textarea, select");
           if (input) input.focus();
         }, 600);
       }, 50);
-    } else {
-      // if contact section not found, still change hash so Contact can read it when mounted
-      // (no further action needed)
     }
   };
 
