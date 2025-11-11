@@ -1,15 +1,15 @@
 // src/components/Contact.jsx
 import React, { useEffect, useState, useCallback } from "react";
-
-/**
- * Contact component (reacts to hash changes)
- * - Re-parses program from URL whenever the hash/search changes (no refresh needed)
- * - Auto-scrolls into view and focuses first input after selecting a program
- * - Layout, colors, and behavior kept identical to your current version
- */
+import emailjs from '@emailjs/browser';
 
 const ACCENT = "#f5c400";
-const NAVBAR_HEIGHT = 70; // adjust if your navbar height differs
+const NAVBAR_HEIGHT = 70;
+
+// Your EmailJS credentials
+const EMAILJS_SERVICE_ID = 'service_fjpoecy';
+const EMAILJS_TEMPLATE_ID = 'template_r3mcpqb';
+const EMAILJS_AUTO_RESPONSE_TEMPLATE_ID = 'template_8micwpn';
+const EMAILJS_PUBLIC_KEY = 'TpP_z-9jL8_kOdSUw';
 
 export default function Contact() {
   const [form, setForm] = useState({
@@ -20,16 +20,20 @@ export default function Contact() {
     message: "",
   });
 
-  // Program metadata (prefilled from URL)
   const [programMeta, setProgramMeta] = useState({
     name: "",
     duration: "",
     price: "",
   });
 
-  const [success, setSuccess] = useState(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState(null);
 
-  // Helper: parse query-like string from either hash or search
+  // Initialize EmailJS
+  useEffect(() => {
+    emailjs.init(EMAILJS_PUBLIC_KEY);
+  }, []);
+
   const parseQueryFromLocation = useCallback(() => {
     try {
       const rawHash = window.location.hash || "";
@@ -56,7 +60,6 @@ export default function Contact() {
     }
   }, []);
 
-  // Smooth scroll to contact with navbar offset + focus first input
   const scrollToSelfAndFocus = useCallback(() => {
     const el = document.getElementById("contact");
     if (!el) return;
@@ -66,14 +69,12 @@ export default function Contact() {
 
     window.scrollTo({ top: target, behavior: "smooth" });
 
-    // focus after scroll
     setTimeout(() => {
       const input = el.querySelector("input[name='name'], input, textarea, select");
       if (input) input.focus();
     }, 600);
   }, []);
 
-  // Read once on mount
   useEffect(() => {
     const parsed = parseQueryFromLocation();
     if (parsed && parsed.program) {
@@ -82,12 +83,10 @@ export default function Contact() {
         duration: parsed.duration,
         price: parsed.price,
       });
-      // small delay so layout stabilizes (esp. mobile)
       setTimeout(scrollToSelfAndFocus, 80);
     }
   }, [parseQueryFromLocation, scrollToSelfAndFocus]);
 
-  // NEW: react to URL changes (hashchange / popstate)
   useEffect(() => {
     const handleURLChange = () => {
       const parsed = parseQueryFromLocation();
@@ -99,7 +98,6 @@ export default function Contact() {
         });
         scrollToSelfAndFocus();
       } else {
-        // if program removed from URL, clear selection
         setProgramMeta({ name: "", duration: "", price: "" });
       }
     };
@@ -117,28 +115,144 @@ export default function Contact() {
     setForm((s) => ({ ...s, [name]: value }));
   };
 
-  const handleSubmit = (e) => {
+  const sendEmail = async (templateParams, templateId) => {
+    try {
+      const result = await emailjs.send(
+        EMAILJS_SERVICE_ID,
+        templateId,
+        templateParams
+      );
+      return { success: true, result };
+    } catch (error) {
+      console.error('EmailJS error:', error);
+      return { success: false, error };
+    }
+  };
+
+  const handleSubmit = async (e) => {
     e.preventDefault();
     if (!form.name.trim()) return alert("Please enter your name.");
     if (!form.email.trim()) return alert("Please enter your email.");
 
-    const payload = {
-      program: programMeta.name || "General enquiry",
-      duration: programMeta.duration || "",
-      price: programMeta.price || "",
-      ...form,
-      submittedAt: new Date().toISOString(),
-    };
+    setIsSubmitting(true);
+    setSubmitStatus(null);
 
-    setSuccess({
-      title: "Request received",
-      text: `Thanks ${form.name.trim() || ""}! We received your request for "${payload.program}". We'll contact you soon.`,
-      payload,
-    });
+    try {
+      const isProgramBooking = !!programMeta.name;
 
-    setForm({ name: "", email: "", phone: "", preferredTime: "", message: "" });
-    setTimeout(() => setSuccess(null), 4500);
+      // 1. Send notification email to yourself (business)
+      const businessTemplateParams = {
+        to_email: 'kasratalayafitness@gmail.com',
+        customer_name: form.name,
+        customer_email: form.email,
+        customer_phone: form.phone || 'Not provided',
+        preferred_time: form.preferredTime || 'Any time',
+        customer_message: form.message || 'No additional message',
+        program_name: programMeta.name || 'General Inquiry',
+        program_duration: programMeta.duration || 'N/A',
+        program_price: programMeta.price || 'N/A',
+        booking_type: isProgramBooking ? 'Program Booking' : 'General Inquiry',
+        submitted_at: new Date().toLocaleString(),
+        reply_to: form.email,
+      };
+
+      console.log('Sending business email with params:', businessTemplateParams);
+      const businessResult = await sendEmail(businessTemplateParams, EMAILJS_TEMPLATE_ID);
+
+      if (businessResult.success) {
+        console.log('Business email sent successfully');
+        
+        // 2. Send auto-response to user
+        const userTemplateParams = {
+          user_email: form.email,
+          to_email: form.email,
+          first_name: form.name.split(' ')[0],
+          user_name: form.name,
+          program_name: programMeta.name || 'General Inquiry',
+          program_duration: programMeta.duration || '',
+          program_price: programMeta.price || '',
+          booking_type: isProgramBooking ? 'Program Booking' : 'General Inquiry',
+          user_message: form.message || 'No additional message',
+          payid_number: '0410394893',
+          account_name: 'Ritik Ghimire',
+          contact_phone: '0410394893',
+          contact_email: 'kasratalayafitness@gmail.com',
+          reply_to: 'kasratalayafitness@gmail.com',
+        };
+
+        console.log('Sending auto-response with params:', userTemplateParams);
+        const userResult = await sendEmail(userTemplateParams, EMAILJS_AUTO_RESPONSE_TEMPLATE_ID);
+
+        if (userResult.success) {
+          console.log('Auto-response sent successfully');
+          setSubmitStatus('success');
+          
+          setForm({ name: "", email: "", phone: "", preferredTime: "", message: "" });
+          
+          if (programMeta.name) {
+            setProgramMeta({ name: "", duration: "", price: "" });
+            try {
+              history.replaceState(null, "", window.location.pathname);
+            } catch {
+              window.location.hash = "";
+            }
+          }
+        } else {
+          console.error('Auto-response failed:', userResult.error);
+          setSubmitStatus('error');
+        }
+      } else {
+        console.error('Business email failed:', businessResult.error);
+        setSubmitStatus('error');
+      }
+    } catch (error) {
+      console.error('Submission error:', error);
+      setSubmitStatus('error');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
+
+  // Success message
+  if (submitStatus === 'success') {
+    return (
+      <section id="contact" className="section-offset">
+        <div className="container-x px-4 sm:px-6 lg:px-8 py-12 sm:py-20">
+          <div className="max-w-3xl mx-auto text-center">
+            <div className="rounded-2xl p-8 border" style={{ 
+              background: "linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01))", 
+              borderColor: "rgba(245,196,0,0.16)" 
+            }}>
+              <div className="text-4xl mb-4" style={{ color: ACCENT }}>✓</div>
+              <h2 className="text-2xl sm:text-3xl font-bold mb-4" style={{ color: ACCENT }}>
+                {programMeta.name ? "Program Booked Successfully!" : "Thank You!"}
+              </h2>
+              <p className="text-zinc-300 text-lg mb-6">
+                {programMeta.name ? (
+                  <>
+                    Thanks <strong>{form.name.trim()}</strong>! We've received your booking for <strong>"{programMeta.name}"</strong>. 
+                    Check your email for program details and payment information. We'll contact you within 24 hours!
+                  </>
+                ) : (
+                  <>
+                    Thanks <strong>{form.name.trim()}</strong>! We received your inquiry and will contact you soon. 
+                    Check your email for our auto-response.
+                  </>
+                )}
+              </p>
+              <button
+                onClick={() => setSubmitStatus(null)}
+                className="inline-flex items-center gap-2 rounded-lg px-6 py-3 font-semibold hover:bg-yellow-300 transition"
+                style={{ background: ACCENT, color: "#000" }}
+              >
+                Send Another Message
+              </button>
+            </div>
+          </div>
+        </div>
+      </section>
+    );
+  }
 
   return (
     <section id="contact" className="section-offset">
@@ -152,19 +266,13 @@ export default function Contact() {
           </p>
         </div>
 
-        {/* Success toast */}
-        {success && (
-          <div
-            className="max-w-3xl mx-auto mb-6 p-4 rounded-lg"
-            style={{
-              background: "linear-gradient(180deg, rgba(245,196,0,0.09), rgba(245,196,0,0.04))",
-              border: "1px solid rgba(245,196,0,0.16)",
-            }}
-          >
-            <div className="text-sm md:text-base font-semibold" style={{ color: "#000" }}>
-              {success.title}
+        {/* Error Message */}
+        {submitStatus === 'error' && (
+          <div className="max-w-3xl mx-auto mb-6 p-4 rounded-lg bg-red-900/20 border border-red-500/30">
+            <div className="text-red-300 font-semibold">Submission Failed</div>
+            <div className="text-red-400 text-sm mt-1">
+              Please try again or contact us directly at kasratalayafitness@gmail.com
             </div>
-            <div className="text-sm text-zinc-800 mt-1">{success.text}</div>
           </div>
         )}
 
@@ -196,10 +304,10 @@ export default function Contact() {
                   <div>
                     <div className="text-zinc-400 text-xs">Email</div>
                     <a
-                      href="mailto:info@kasratonline.com"
+                      href="mailto:kasratalayafitness@gmail.com"
                       className="font-semibold text-zinc-200 hover:text-white"
                     >
-                      info@kasratonline.com
+                      kasratalayafitness@gmail.com
                     </a>
                   </div>
 
@@ -212,15 +320,10 @@ export default function Contact() {
                       +61 410 394 893
                     </a>
                   </div>
-
-                  {/* <div>
-                    <div className="text-zinc-400 text-xs">Hours</div>
-                    <div className="font-medium text-zinc-200">Mon — Sat: 6 AM — 9 PM</div>
-                  </div> */}
                 </div>
               </div>
 
-              {/* Socials + CTA (icons from previous step you approved) */}
+              {/* Socials + CTA */}
               <div className="mt-6 pt-3 border-t border-white/5">
                 <div className="flex items-center gap-3 mt-2">
                   <a
@@ -275,7 +378,7 @@ export default function Contact() {
 
                 <div className="mt-6 pt-3 border-t border-white/5">
                   <div className="text-sm text-zinc-300">
-                    Prefer a quick call? Use the form and mention “call” in notes — we’ll schedule a convenient time.
+                    Prefer a quick call? Use the form and mention "call" in notes — we'll schedule a convenient time.
                   </div>
                   <button
                     type="button"
@@ -317,6 +420,9 @@ export default function Contact() {
                     <div className="text-sm text-zinc-300">Program selected</div>
                     <div className="text-lg font-bold" style={{ color: ACCENT }}>
                       {programMeta.name}
+                    </div>
+                    <div className="text-xs text-zinc-400 mt-1">
+                      You'll receive program details and payment information after booking
                     </div>
                   </div>
 
@@ -364,6 +470,7 @@ export default function Contact() {
                     placeholder="Your full name"
                     className="w-full rounded-lg p-3 bg-zinc-800 border border-zinc-700 focus:border-yellow-400 outline-none text-white"
                     required
+                    disabled={isSubmitting}
                   />
                 </div>
 
@@ -377,6 +484,7 @@ export default function Contact() {
                     placeholder="you@example.com"
                     className="w-full rounded-lg p-3 bg-zinc-800 border border-zinc-700 focus:border-yellow-400 outline-none text-white"
                     required
+                    disabled={isSubmitting}
                   />
                 </div>
 
@@ -388,6 +496,7 @@ export default function Contact() {
                     onChange={handleChange}
                     placeholder="+XX XXXXXXXX"
                     className="w-full rounded-lg p-3 bg-zinc-800 border border-zinc-700 focus:border-yellow-400 outline-none text-white"
+                    disabled={isSubmitting}
                   />
                 </div>
 
@@ -398,6 +507,7 @@ export default function Contact() {
                     value={form.preferredTime}
                     onChange={handleChange}
                     className="w-full rounded-lg p-3 bg-zinc-800 border border-zinc-700 focus:border-yellow-400 outline-none text-white"
+                    disabled={isSubmitting}
                   >
                     <option value="">Any time</option>
                     <option value="morning">Morning (5 AM – 6 AM)</option>
@@ -413,22 +523,32 @@ export default function Contact() {
                     rows="4"
                     value={form.message}
                     onChange={handleChange}
-                    placeholder="Any goals, injuries, or things we should know (optional)"
+                    placeholder={programMeta.name ? 
+                      "Any specific goals, injuries, or preferences for your program..." : 
+                      "Any questions or information you'd like to share..."
+                    }
                     className="w-full rounded-lg p-3 bg-zinc-800 border border-zinc-700 focus:border-yellow-400 outline-none text-white resize-none"
+                    disabled={isSubmitting}
                   />
                 </div>
 
                 <div className="pt-2">
                   <button
                     type="submit"
-                    className="w-full rounded-lg py-3 font-bold"
+                    disabled={isSubmitting}
+                    className="w-full rounded-lg py-3 font-bold disabled:opacity-50 disabled:cursor-not-allowed transition-all"
                     style={{ background: ACCENT, color: "#000" }}
                   >
-                    Send Request
+                    {isSubmitting ? "Sending..." : 
+                      (programMeta.name ? "Book Program Now" : "Send Message")
+                    }
                   </button>
 
                   <div className="mt-2 text-xs text-zinc-500 text-center">
-                    We’ll contact you within 24 hours. By submitting you agree we may reach out about your request.
+                    {programMeta.name ? 
+                      "You'll receive program details and payment information immediately after booking." :
+                      "We'll contact you within 24 hours. By submitting you agree we may reach out about your request."
+                    }
                   </div>
                 </div>
               </form>
